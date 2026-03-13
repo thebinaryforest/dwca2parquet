@@ -1,4 +1,6 @@
 dwca2parquet
+[![CI](https://github.com/thebinaryforest/dwca2parquet/actions/workflows/ci.yml/badge.svg)](https://github.com/thebinaryforest/dwca2parquet/actions/workflows/ci.yml)
+
 A Python tool to convert Darwin Core Archive (DwC-A) files into Apache Parquet / GeoParquet format for high-performance data access.
 
 Part 1 — User Guide
