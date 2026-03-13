@@ -16,7 +16,7 @@
 |  2. For each data file:                          |
 |     a. Stream CSV in batches (PyArrow)           |
 |     b. Apply defaults from meta.xml              |
-|     c. Optionally cast types (typed mode)        |
+|     c. Optionally cast types (interpreted mode)  |
 |     d. Inject _id / _coreid columns              |
 |     e. Build geometry from coordinates (if any)  |
 |     f. Write Parquet / GeoParquet (streaming)    |
@@ -103,7 +103,7 @@ The tool adds two reserved columns to manage relationships:
 | `_id`     | Core file  | The core record identifier (from the `id` field in meta.xml) |
 | `_coreid` | Extensions | The foreign key linking to the core record's `_id`           |
 
-These columns are always strings, even in typed mode.
+These columns are always strings, even in interpreted mode.
 
 If the original archive uses `id` or `coreid` as actual Darwin Core field names (rare), the reserved column takes precedence and the original is renamed to `_orig_id` / `_orig_coreid`.
 
@@ -118,7 +118,7 @@ Each output Parquet file embeds metadata in its key-value footer:
 | dwca:source_archive  | Original archive filename                  |
 | dwca:is_core         | true or false                              |
 | dwca:core_rowType    | (extensions only) rowType of the core file |
-| dwca:conversion_mode | raw or typed                               |
+| dwca:conversion_mode | raw or interpreted                         |
 | dwca:converted_at    | ISO 8601 timestamp of conversion           |
 
 ### Column-level metadata
@@ -131,7 +131,7 @@ Each column carries metadata:
 | dwca:index         | Original field index in the CSV                   |
 | dwca:has_default   | `true` if a default was applied, absent otherwise |
 | dwca:default_value | The default value (only if `has_default` is true) |
-| dwca:original_type | (typed mode) `string` - the type before casting   |
+| dwca:original_type | (interpreted mode) `string` - the type before casting |
 
 ### Parquet write settings
 
@@ -141,9 +141,9 @@ Each column carries metadata:
 - **Dictionary encoding:** enabled by default for all string columns (very effective for DwC data with many repeated values like `basisOfRecord`, `country`, etc.).
 - **Parquet version:** 2.6 (supports nanosecond timestamps and other modern features).
 
-## Typed mode - type mapping
+## Interpreted mode - type mapping
 
-In typed mode, columns corresponding to well-known Darwin Core terms are cast to appropriate Arrow/Parquet types. The mapping is defined in a built-in dictionary and can be extended by users.
+In interpreted mode, columns corresponding to well-known Darwin Core terms are cast to appropriate Arrow/Parquet types. The mapping is defined in a built-in dictionary and can be extended by users.
 
 **Built-in type mapping (excerpt):**
 
@@ -175,7 +175,7 @@ In typed mode, columns corresponding to well-known Darwin Core terms are cast to
 dwca2parquet.convert(
     "archive.zip",
     output_dir="./out/",
-    typed=True,
+    interpreted=True,
     type_overrides={
         "http://example.org/terms/myCustomField": pa.float32(),
         "individualCount": pa.int32(),  # override the default int64
@@ -195,9 +195,9 @@ Darwin Core's `eventDate` field is notoriously variable. Values can be:
 - A year only: `2020`
 - A date range: `2020-01-01/2020-03-31`
 
-Because of this, `eventDate` is always kept as a string in the output, even in typed mode.
+Because of this, `eventDate` is always kept as a string in the output, even in interpreted mode.
 
-In typed mode, an additional convenience column `_eventDate_start` (and `_eventDate_end` for ranges) of type `date32` is added when the value can be parsed. Rows where parsing fails get null in these derived columns.
+In interpreted mode, an additional convenience column `_eventDate_start` (and `_eventDate_end` for ranges) of type `date32` is added when the value can be parsed. Rows where parsing fails get null in these derived columns.
 
 ## Denormalized mode
 
@@ -213,7 +213,25 @@ The denormalized file is named `denormalized.parquet`.
 
 ## GeoParquet output
 
-When the core data file contains both `decimalLatitude` and `decimalLongitude` fields, dwca2parquet automatically produces a GeoParquet 1.1 compliant file. This is the default behavior and can be disabled with `--no-geometry`.
+When the core data file contains both `decimalLatitude` and `decimalLongitude` fields, dwca2parquet can produce a GeoParquet 1.1 compliant file with a `geometry` column. Whether it does so by default depends on the conversion mode:
+
+- **Interpreted mode** (`--interpreted`): geometry is created by default. Disable with `--no-geometry`.
+- **Raw mode** (default): geometry is **not** created by default. Enable with `--geometry`.
+
+In the Python API, this is controlled by the `geometry` parameter:
+
+```python
+# Interpreted mode with geometry (default when interpreted=True)
+convert("archive.zip", interpreted=True)
+
+# Interpreted mode, geometry suppressed
+convert("archive.zip", interpreted=True, geometry=False)
+
+# Raw mode, geometry opt-in
+convert("archive.zip", interpreted=False, geometry=True)
+```
+
+Pass `geometry=None` (the default) to use the mode-appropriate default.
 
 ### How it works
 
@@ -260,7 +278,7 @@ Tools with GeoParquet support (QGIS, GeoPandas, DuckDB spatial, GDAL >= 3.5, Kep
 No geometry column or GeoParquet metadata is added when:
 
 - The archive does not contain `decimalLatitude` and `decimalLongitude` fields.
-- The `--no-geometry` flag is passed.
+- Geometry is disabled for the active mode (raw mode by default, or explicitly via `--no-geometry`).
 - The data file is an extension (geometry is only added to the core file).
 
 In these cases, the output is a plain Parquet file.
@@ -286,8 +304,8 @@ class ConversionResult:
     extension_row_counts: list[int]          # Row counts for each extension
     denormalized_path: Path | None           # Path if denormalize=True
     eml_path: Path | None                    # Path to copied eml.xml, if present
-    conversion_mode: str                     # "raw" or "typed"
-    type_conversion_failures: dict[str, int] # Column name -> failure count (typed mode)
+    conversion_mode: str                     # "raw" or "interpreted"
+    type_conversion_failures: dict[str, int] # Column name -> failure count (interpreted mode)
     warnings: list[str]                      # Any warnings generated
     elapsed_seconds: float                   # Total conversion time
 ```
@@ -302,13 +320,14 @@ Positional arguments:
 
 Options:
   -o, --output-dir DIR        Output directory (default: ./<archive_name>_parquet/)
-  --typed                     Apply data types to known Darwin Core fields
-  --raw                       Keep all columns as strings (default)
+  --interpreted               Interpret data: apply types, geometry, date parsing
+  --raw                       Keep all columns as strings, no interpretation (default)
   --denormalize               Produce an additional single joined Parquet file
   --batch-size N              Rows per batch for streaming conversion (default: 250000)
   --compression CODEC         Parquet compression: zstd (default), snappy, gzip, none
   --type-overrides FILE       Path to a JSON file with custom type mappings
-  --no-geometry               Do not create geometry column even if coordinates are present
+  --geometry                  Force geometry column creation in raw mode
+  --no-geometry               Suppress geometry column creation in interpreted mode
   --no-eml                    Do not copy eml.xml to output
   -v, --verbose               Verbose logging
   -q, --quiet                 Suppress all output except errors

@@ -34,9 +34,9 @@ class ConversionResult:
     eml_path : Path or None
         Path to the copied metadata file (eml.xml or equivalent), or None if absent.
     conversion_mode : str
-        "raw" or "typed".
+        "raw" or "interpreted".
     type_conversion_failures : dict
-        Mapping of column name to failure count (typed mode only).
+        Mapping of column name to failure count (interpreted mode only).
     warnings : list of str
         Any warnings generated during conversion.
     elapsed_seconds : float

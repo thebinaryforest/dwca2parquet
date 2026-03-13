@@ -14,7 +14,7 @@ If you work with biodiversity data from GBIF or other sources, you've probably d
 
 - **Speed:** Parquet files are columnar and compressed. Reading 50 million occurrences that would take minutes with CSV-based tools can take seconds.
 - **No special knowledge needed:** The tool takes care of DwC-A specifics (default values, extensions, metadata) so you get clean, ready-to-use tables.
-- **GIS-ready:** When coordinates are present, the output includes a standard geometry column. Open it directly in QGIS, GeoPandas, or any GeoParquet-compatible tool - no manual coordinate wrangling needed.
+- **GIS-ready:** In interpreted mode, a standard geometry column is created automatically when coordinates are present. Open it directly in QGIS, GeoPandas, or any GeoParquet-compatible tool - no manual coordinate wrangling needed.
 - **Use your favorite tool:** The output is standard Parquet - open it with whatever you prefer.
 
 ### Installation
@@ -32,7 +32,7 @@ pip install dwca2parquet
 dwca2parquet convert my_download.zip -o ./my_data/
 
 # Force data types (latitude as float, dates as dates, etc.)
-dwca2parquet convert my_download.zip -o ./my_data/ --typed
+dwca2parquet convert my_download.zip -o ./my_data/ --interpreted
 
 # Get a single, pre-joined table (convenient for simple archives)
 dwca2parquet convert my_download.zip -o ./my_data/ --denormalize
@@ -46,7 +46,7 @@ import dwca2parquet
 result = dwca2parquet.convert(
     "my_download.zip",
     output_dir="./my_data/",
-    typed=False,  # True to apply data types
+    interpreted=False,  # True to apply types, geometry, date parsing
 )
 
 print(result.core_path)        # "./my_data/occurrence.parquet"
@@ -128,11 +128,11 @@ JOIN read_parquet('./my_data/multimedia.parquet') m
   ON o._id = m._coreid;
 ```
 
-### Typed vs. raw mode
+### Interpreted vs. raw mode
 
 By default, all columns are stored as strings, exactly as they appear in the original archive. This is the safest option - no data is altered or lost.
 
-With `--typed`, the tool applies data types to well-known Darwin Core fields:
+With `--interpreted`, the tool applies types, geometry, and date parsing to well-known Darwin Core fields:
 
 | Field example      | Type applied      |
 |--------------------|-------------------|
@@ -142,15 +142,18 @@ With `--typed`, the tool applies data types to well-known Darwin Core fields:
 | individualCount    | int64             |
 | hasGeospatialIssue | boolean           |
 
-> **Note on dates:** Darwin Core dates can be ranges (`2020-01/2020-03`), partial (`2020`), or standard ISO dates (`2020-06-15`). Because of this variability, `eventDate` is kept as a string even in typed mode. A separate parsed date column (`_eventDate_parsed`) may be added when the value is a valid single date.
+> **Note on dates:** Darwin Core dates can be ranges (`2020-01/2020-03`), partial (`2020`), or standard ISO dates (`2020-06-15`). Because of this variability, `eventDate` is kept as a string even in interpreted mode. A separate parsed date column (`_eventDate_parsed`) may be added when the value is a valid single date.
 
 Values that cannot be converted to the expected type (e.g. `"unknown"` in a numeric field) are set to null, and a warning is logged.
 
 ### Geometry column (GeoParquet)
 
-When the archive contains `decimalLatitude` and `decimalLongitude` fields, dwca2parquet automatically creates a `geometry` column containing Point geometries in the standard GeoParquet format. This happens in both raw and typed modes.
+Geometry creation depends on the conversion mode:
 
-This means you can:
+- **Interpreted mode (default: on)** - when `decimalLatitude` and `decimalLongitude` are present, a `geometry` column is created automatically. Disable with `--no-geometry`.
+- **Raw mode (default: off)** - no geometry column is created by default, since raw mode preserves data as-is. Enable with `--geometry`.
+
+When geometry is created, each row with valid coordinates gets a WKB-encoded Point. This means you can:
 
 - Open the file directly in QGIS - it appears as a point layer, no import step needed.
 - Use GeoPandas for spatial analysis in Python.
@@ -158,13 +161,7 @@ This means you can:
 
 Records where either coordinate is missing or invalid get a null geometry. The original `decimalLatitude` and `decimalLongitude` columns are preserved as-is alongside the geometry column.
 
-If your archive has no coordinate fields, the output is a plain Parquet file (no geometry column, no GeoParquet metadata). Non-geo tools won't notice any difference either way - the geometry column is simply ignored if you don't use it.
-
-To skip geometry creation even when coordinates are present:
-
-```bash
-dwca2parquet convert my_download.zip -o ./my_data/ --no-geometry
-```
+If your archive has no coordinate fields, or geometry is not enabled, the output is a plain Parquet file. Non-geo tools won't notice any difference either way.
 
 ### Interactive exploration with DuckDB
 

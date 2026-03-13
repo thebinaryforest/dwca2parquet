@@ -264,7 +264,7 @@ def _convert_data_file(
     file_desc: FileDescriptor,
     output_path: Path,
     archive_name: str,
-    conversion_mode: str = "raw",
+    conversion_mode: str = "raw",  # "raw" or "interpreted"
 ) -> int:
     """Convert one DwC-A CSV data file to a Parquet file.
 
@@ -282,7 +282,7 @@ def _convert_data_file(
     archive_name : str
         Name of the source archive (embedded in Parquet metadata).
     conversion_mode : str
-        "raw" or "typed" (typed casting is applied by the caller in typed mode).
+        "raw" or "interpreted" (type casting and geometry are applied by the caller in interpreted mode).
 
     Returns
     -------
@@ -350,8 +350,8 @@ def convert(
     archive: str | Path,
     output_dir: str | Path | None = None,
     *,
-    typed: bool = False,
-    no_geometry: bool = False,
+    interpreted: bool = False,
+    geometry: bool | None = None,
 ) -> ConversionResult:
     """Convert a Darwin Core Archive to Parquet files.
 
@@ -362,10 +362,14 @@ def convert(
     output_dir : str or Path or None
         Directory to write output files into.  Created if it does not exist.
         Defaults to ``<archive_stem>_parquet/`` next to the archive.
-    typed : bool
-        If True, apply data types to known Darwin Core fields (Step 4).
-    no_geometry : bool
-        If True, skip geometry column creation even when coordinates are present.
+    interpreted : bool
+        If True, apply data types, geometry, and other interpretations to
+        known Darwin Core fields (interpreted mode).
+    geometry : bool or None
+        Whether to create a GeoParquet geometry column when coordinates are
+        present.  None (default) uses the mode-appropriate default: True in
+        interpreted mode, False in raw mode.  Pass True to force geometry in
+        raw mode, or False to suppress it in interpreted mode.
 
     Returns
     -------
@@ -380,7 +384,10 @@ def convert(
 
     started = time.monotonic()
     warnings_list: list[str] = []
-    conversion_mode = "raw"  # typed mode added in Step 4
+    conversion_mode = "interpreted" if interpreted else "raw"
+
+    # Resolve geometry default: on in interpreted mode, off in raw mode
+    create_geometry = interpreted if geometry is None else geometry
 
     with zipfile.ZipFile(archive) as zf:
         # Locate meta.xml, handling archives that wrap content in a subdirectory
@@ -445,7 +452,7 @@ def convert(
         extension_row_counts=extension_row_counts,
         denormalized_path=None,
         eml_path=eml_path,
-        conversion_mode=conversion_mode,
+        conversion_mode=conversion_mode,  # "raw" or "interpreted"
         type_conversion_failures={},
         warnings=warnings_list,
         elapsed_seconds=time.monotonic() - started,
