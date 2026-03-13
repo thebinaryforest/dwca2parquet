@@ -365,7 +365,6 @@ class TestConvertGeometryIntegration:
 
     def test_extensions_never_get_geometry(self, tmp_path):
         """Geometry is only added to the core file, never to extensions."""
-        from pathlib import Path
         result = convert(FIXTURES / "dwca-2extensions.zip", tmp_path, geometry=True)
         for ext_path in result.extension_paths:
             table = pq.read_table(ext_path)

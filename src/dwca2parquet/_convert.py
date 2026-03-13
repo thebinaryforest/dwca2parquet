@@ -283,7 +283,8 @@ def _convert_data_file(
     archive_name : str
         Name of the source archive (embedded in Parquet metadata).
     conversion_mode : str
-        "raw" or "interpreted" (type casting and geometry are applied by the caller in interpreted mode).
+        "raw" or "interpreted" (type casting and geometry are applied by the caller
+        in interpreted mode).
 
     Returns
     -------

@@ -18,7 +18,6 @@ from typing import NamedTuple
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-
 # ---------------------------------------------------------------------------
 # WKB Point encoding
 # ---------------------------------------------------------------------------
