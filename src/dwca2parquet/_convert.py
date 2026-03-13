@@ -24,6 +24,7 @@ import pyarrow.csv as pa_csv
 import pyarrow.parquet as pq
 
 from dwca2parquet import __version__
+from dwca2parquet._geo import add_geometry_to_parquet
 from dwca2parquet._meta import FileDescriptor, parse_meta_xml
 from dwca2parquet._result import ConversionResult
 
@@ -441,12 +442,18 @@ def convert(
                     f"meta.xml but not found in the archive."
                 )
 
+    # --- Geometry (GeoParquet) ---
+    has_geometry = False
+    geometry_null_count = 0
+    if create_geometry:
+        has_geometry, geometry_null_count = add_geometry_to_parquet(core_path)
+
     return ConversionResult(
         core_path=core_path,
         core_row_type=descriptor.core.row_type,
         core_row_count=core_row_count,
-        has_geometry=False,
-        geometry_null_count=0,
+        has_geometry=has_geometry,
+        geometry_null_count=geometry_null_count,
         extension_paths=extension_paths,
         extension_row_types=extension_row_types,
         extension_row_counts=extension_row_counts,
