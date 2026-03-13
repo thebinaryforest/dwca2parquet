@@ -148,7 +148,7 @@ def _parse_file_descriptor(section: ET.Element, is_core: bool) -> FileDescriptor
     ignore_header_lines = int(section.get("ignoreHeaderLines", "0"))
     row_type = section.get("rowType", "")
 
-    location_el = section.find("location")
+    location_el = section.find("files/location")
     filename = location_el.text.strip() if location_el is not None and location_el.text else ""
 
     # id (core) or coreid (extension)
